@@ -1,6 +1,13 @@
 ## 設計過程prompt
 ```
-2023-05-21 15:22 Bowen Chiu
+2023-05-21 16:51 Bowen Chiu prompt
+修改偵測 chunk 製作為 sha 256 hex 字串之後，如果輸出的目錄當中有包含檔案名稱有 hex_dig 存在的檔案名字就跳過這個檔案不要製作了 （不要呼叫 prompt_to_ai），改為印出 hex_dig 這個字串已經存在的提示訊息就好
+請告訴我該改哪些片段就好
+
+2023-05-21 15:32 Bowen Chiu prompt
+處理輸入的 .json 檔案一個就過大了，所以請讓輸入參數多新增一個參數是切割片段以多少字元為切割，預設是 1000 代表不管中文英文字元，都是以 1000 字元切割餵入 prompt_to_ai 每次餵入一次就產生一個 .csv 檔案這樣。當然 1000 要可以參數修改。給我完整修改後程式碼
+
+2023-05-21 15:22 Bowen Chiu prompt
 -- 我想製作 to_qa_csv.py
 目的: 讀取任意純文字檔案，可以是 .txt .json .csv 或任意純文字檔案，適當切割之後讓chatgpt api可以消化(因為gpt-4有max 8k tokens最大限制), 最終轉換為 .csv 一問一答， .csv 欄位有兩個：question, answer
 
