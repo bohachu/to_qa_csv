@@ -6,7 +6,7 @@ with open('requirements.txt') as f:
 
 setup(
     name="to-qa-csv",
-    version="1.0.0",
+    version="1.0.1",
     packages=find_packages(),
     py_modules=['to_qa_csv'],
     install_requires=requirements,
