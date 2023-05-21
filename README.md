@@ -1,5 +1,64 @@
+# To QA CSV Converter
+
+這個工具負責將文字檔(.txt)或者 JSON 檔(.json)作為輸入，並產生對應的問答 (question, answer) .csv 檔案。此程式可用於將自然語言資料轉換為問答資料，讓用戶可以更有效地解析文件。
+
+## 安裝 Installation
+
+透過 PyPI 安裝:
+
+```bash
+python3 -m pip install to-qa-csv
+```
+
+透過 GitHub 下載並安裝:
+
+```bash
+python3 -m pip install git+https://github.com/bohachu/to_qa_csv.git
+```
+
+## 使用方法 Usage
+
+### 命令行界面 (Command Line Interface, CLI)
+
+通過命令行界面使用 `to_qa_csv`，範例如下：
+
+```bash
+to_qa_csv -i input_folder -u your_user_name -o output_folder -e .txt .json -p "Your prompt" -t 2 -m gpt-4 -f -c 5000
+```
+
+以下是各個參數的說明：
+- `-i` or `--input_folder`: 輸入文件的資料夾，將會搜尋這個資料夾中的.txt 和 .json 文件
+- `-u` or `--user`: 使用者名稱
+- `-o` or `--output_folder`: 輸出 .csv 檔案的目錄
+- `-e` or `--extensions`: 指定要搜尋的檔案副檔名，以空格隔開，例如: .txt .json
+- `-p` or `--prompt`: 給 AI model 的題詞
+- `-t` or `--threads`: 指定多少 threads 同時進行轉換作業
+- `-m` or `--model`: 要使用的 AI model 名稱，例如: gpt-4
+- `-f` or `--force`: 是否強制重新製作輸出檔案
+- `-c` or `--chunk_size`: 切割片段以多少字元為切割
+
+### 使用Python模組 (Python Module)
+
+導入 `to_qa_csv` 模組並使用 `to_qa_csv` 函數，範例如下：
+
+```python
+from to_qa_csv import to_qa_csv
+
+to_qa_csv(input_folder="/path/to/input/folder",
+          user="your_user_name",
+          output_folder="/path/to/output/folder",
+          extensions=[".txt", ".json"],
+          prompt="your_prompt",
+          threads=2,
+          model="gpt-4",
+          force=True,
+          chunk_size=5000)
+
 ## 設計過程prompt
 ```
+2023-05-21 21:13 Bowen, 增添 README.md 完整說明
+- python3 -m to_pip -v 1.0.1 -n to-qa-csv to_qa_csv.py
+
 2023-05-21 16:51 Bowen Chiu prompt
 修改偵測 chunk 製作為 sha 256 hex 字串之後，如果輸出的目錄當中有包含檔案名稱有 hex_dig 存在的檔案名字就跳過這個檔案不要製作了 （不要呼叫 prompt_to_ai），改為印出 hex_dig 這個字串已經存在的提示訊息就好
 請告訴我該改哪些片段就好
