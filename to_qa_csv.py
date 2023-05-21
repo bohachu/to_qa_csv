@@ -1,9 +1,10 @@
 import argparse
 import datetime
 import glob
-import hashlib
 import os
+from concurrent.futures import ThreadPoolExecutor
 from functools import reduce
+from hashlib import sha256
 
 from openai_chat_thread import openai_chat_thread_taiwan
 
@@ -11,7 +12,7 @@ DEFAULT_START_TAG = '--start_ai--'
 DEFAULT_END_TAG = '--end_ai--'
 DEFAULT_CHUNK_SIZE = 5000
 DEFAULT_MODEL = 'gpt-4'
-DEFAULT_THREADS = 5
+DEFAULT_THREADS = 10
 DEFAULT_PROMPT = f"\n\n-- 以下是處理規則\n" \
                  f" 001 把「內容」剖析為一問一答的 .csv 有 question,answer 兩個欄位" \
                  f" 002 注意!無論question或answer都必須翻譯為繁體中文,不可以是英文" \
@@ -41,6 +42,14 @@ def in_tag_response(all_response, start_tag=DEFAULT_START_TAG, end_tag=DEFAULT_E
         return ''
 
 
+def threads_print(thread_id, str1):
+    folder = "data/threads_print/"
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, f'''sha_{sha256(thread_id.encode('utf-8')).hexdigest()}.txt'''),
+              'a') as f:
+        f.write(str1)
+
+
 def prompt_to_ai(prompt, model='gpt-4', is_print=True):
     q = openai_chat_thread_taiwan(prompt, model)
     lst = []
@@ -51,7 +60,7 @@ def prompt_to_ai(prompt, model='gpt-4', is_print=True):
         else:
             lst.append(response)
         if is_print:
-            print(response, end="", flush=True)
+            threads_print(prompt, response)
     join_str = ''.join(lst)
     return join_str
 
@@ -60,48 +69,54 @@ def multi_replace(original_string, lst=['@', ':', '.'], replacement='_'):
     return reduce(lambda str1, ch: str1.replace(ch, replacement), lst, original_string)
 
 
-def convert_to_csv(input_folder=DEFAULT_INPUT_FOLDER,
+def process_chunk(chunk, output_folder, user, model, prompt, force):
+    hex_dig = sha256(chunk.encode('utf-8')).hexdigest()
+
+    date_str = datetime.datetime.utcnow().strftime('%Y-%m-%d')
+    time_str = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H_%M_%SZ')
+    csv_file_name = f'type_to_qa_csv_time_{time_str}_sha_{hex_dig}.csv'
+
+    combined_folder = os.path.join(output_folder, multi_replace(user), 'to_qa_csv', date_str)
+    output_path = os.path.join(combined_folder, csv_file_name)
+
+    existing_files = glob.glob(os.path.join(combined_folder, '**', f'*{hex_dig}*.*'),
+                               recursive=True)
+    if not force and existing_files:
+        print(f"{hex_dig} 已經存在，跳過製作")
+        return
+
+    prompt_str = prompt + chunk
+    print('\nprompt_str:\n', prompt_str)
+    qa_data = prompt_to_ai(prompt_str, model)
+
+    if not os.path.exists(os.path.dirname(output_path)):
+        os.makedirs(os.path.dirname(output_path))
+
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        in_tag = in_tag_response(qa_data)
+        f.write(in_tag)
+
+
+def convert_to_csv(input_file,
                    user=DEFAULT_USER,
                    output_folder=DEFAULT_OUTPUT_FOLDER,
                    prompt=DEFAULT_PROMPT,
+                   threads=DEFAULT_THREADS,
                    model='gpt-4',
                    force=False,
                    chunk_size=DEFAULT_CHUNK_SIZE):
-    with open(input_folder, 'r', encoding='utf-8') as file:
+    with open(input_file, 'r', encoding='utf-8') as file:
         content = file.read()
 
     content_chunks = [content[i:i + chunk_size] for i in range(0, len(content), chunk_size)]
 
-    for chunk in content_chunks:
-        hash_object = hashlib.sha256(chunk.encode('utf-8'))
-        hex_dig = hash_object.hexdigest()
-
-        date_str = datetime.datetime.utcnow().strftime('%Y-%m-%d')
-        time_str = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H_%M_%SZ')
-        csv_file_name = f'type_to_qa_csv_time_{time_str}_sha_{hex_dig}.csv'
-
-        combined_folder = os.path.join(output_folder, multi_replace(user), 'to_qa_csv', date_str)
-        output_path = os.path.join(combined_folder, csv_file_name)
-
-        existing_files = glob.glob(os.path.join(combined_folder, '**', f'*{hex_dig}*.*'),
-                                   recursive=True)
-        if not force and existing_files:
-            print(f"{hex_dig} 已經存在，跳過製作")
-            continue
-
-        prompt_str = prompt + chunk
-        print('\nprompt_str:\n', prompt_str)
-        qa_data = prompt_to_ai(prompt_str, model)
-
-        if not os.path.exists(os.path.dirname(output_path)):
-            os.makedirs(os.path.dirname(output_path))
-
-        with open(output_path, 'w', newline='', encoding='utf-8') as f:
-            in_tag = in_tag_response(qa_data)
-            f.write(in_tag)
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        executor.map(process_chunk, content_chunks, [output_folder] * len(content_chunks),
+                     [user] * len(content_chunks), [model] * len(content_chunks),
+                     [prompt] * len(content_chunks), [force] * len(content_chunks))
 
 
-def main():
+def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input_folder', default=DEFAULT_INPUT_FOLDER, help='指定要搜尋的目錄')
     parser.add_argument('-u', '--user', default=DEFAULT_USER, help='使用者名稱')
@@ -115,16 +130,20 @@ def main():
     parser.add_argument('-f', '--force', default="", help='是否強制重新製作輸出檔案')
     parser.add_argument('-c', '--chunk_size', type=int, default=DEFAULT_CHUNK_SIZE, help='切割片段以多少字元為切割')
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
+
+def to_qa_csv(input_folder, user, output_folder, extensions, prompt, threads, model, force, chunk_size):
     all_files = []
-    for ext in args.extensions:
-        all_files.extend(glob.glob(f'{args.input_folder}/**/{ext}', recursive=True))
+    for ext in extensions:
+        all_files.extend(glob.glob(f'{input_folder}/**/{ext}', recursive=True))
 
-    for filepath in all_files:
-        convert_to_csv(filepath, args.user, args.output_folder, args.prompt, args.model, args.force,
-                       args.chunk_size)
+    for input_file in all_files:
+        convert_to_csv(input_file, user, output_folder, prompt, threads, model, force,
+                       chunk_size)
 
 
 if __name__ == "__main__":
-    main()
+    a = parse_arguments()
+    to_qa_csv(a.input_folder, a.user, a.output_folder, a.extensions, a.prompt, a.threads, a.model, a.force,
+              a.chunk_size)
